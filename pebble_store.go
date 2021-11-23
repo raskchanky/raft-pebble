@@ -73,6 +73,10 @@ func (b *PebbleStore) Close() error {
 	return b.conn.Close()
 }
 
+func (b *PebbleStore) Metrics() *pebble.Metrics {
+	return b.conn.Metrics()
+}
+
 // FirstIndex returns the first known index from the Raft log.
 func (b *PebbleStore) FirstIndex() (uint64, error) {
 	iter := b.conn.NewIter(nil)

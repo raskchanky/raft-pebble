@@ -340,6 +340,41 @@ func TestBoltStore_SetUint64_GetUint64(t *testing.T) {
 	}
 }
 
+// check that log values are separated from config values
+func TestSeparationOfValues(t *testing.T) {
+	store := testPebbleStore(t)
+	defer store.Close()
+	defer os.RemoveAll(store.path)
+
+	// raft logs are stored with keys corresponding to their index numbers,
+	// so we're going to manually set a value here with a key of 1. after
+	// writing the raft logs, we should still be able to read this value out,
+	// because we're using prefixes as pseudo buckets.
+	if err := store.Set(uint64ToBytes(1), []byte("hi")); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set a mock raft log
+	logs := []*raft.Log{
+		testRaftLog(1, "log1"),
+		testRaftLog(2, "log2"),
+		testRaftLog(3, "log3"),
+	}
+	if err := store.StoreLogs(logs); err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to read our original entry back out
+	val, err := store.Get(uint64ToBytes(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(val, []byte("hi")) {
+		t.Fatalf("expected %v to equal %v but it didn't", val, []byte("hi"))
+	}
+}
+
 func TestNewPebbleStore(t *testing.T) {
 	dh, err := os.MkdirTemp("", "pebble")
 	if err != nil {

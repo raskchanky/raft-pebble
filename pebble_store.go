@@ -1,6 +1,7 @@
 package raftpebble
 
 import (
+	"bytes"
 	"errors"
 
 	"github.com/cockroachdb/pebble"
@@ -14,6 +15,10 @@ const (
 )
 
 var (
+	// Prefixes to use in lieu of bucket names, since pebble doesn't support buckets
+	dbLogs = []byte("logs/")
+	dbConf = []byte("conf/")
+
 	// An error indicating a given key does not exist
 	ErrKeyNotFound = errors.New("not found")
 )
@@ -79,12 +84,14 @@ func (b *PebbleStore) Metrics() *pebble.Metrics {
 
 // FirstIndex returns the first known index from the Raft log.
 func (b *PebbleStore) FirstIndex() (uint64, error) {
-	iter := b.conn.NewIter(nil)
+	iter := b.conn.NewIter(&pebble.IterOptions{
+		LowerBound: dbLogs,
+	})
 	defer iter.Close()
 
 	if valid := iter.First(); valid	{
 		if key := iter.Key(); key != nil {
-			return bytesToUint64(key), nil
+			return bytesToUint64(bytes.TrimPrefix(key, dbLogs)), nil
 		}
 	}
 
@@ -93,12 +100,14 @@ func (b *PebbleStore) FirstIndex() (uint64, error) {
 
 // LastIndex returns the last known index from the Raft log.
 func (b *PebbleStore) LastIndex() (uint64, error) {
-	iter := b.conn.NewIter(nil)
+	iter := b.conn.NewIter(&pebble.IterOptions{
+		LowerBound: dbLogs,
+	})
 	defer iter.Close()
 
 	if valid := iter.Last(); valid	{
 		if key := iter.Key(); key != nil {
-			return bytesToUint64(key), nil
+			return bytesToUint64(bytes.TrimPrefix(key, dbLogs)), nil
 		}
 	}
 
@@ -107,7 +116,8 @@ func (b *PebbleStore) LastIndex() (uint64, error) {
 
 // GetLog is used to retrieve a log from pebble at a given index.
 func (b *PebbleStore) GetLog(idx uint64, log *raft.Log) error {
-	val, closer, err := b.conn.Get(uint64ToBytes(idx))
+	key := append(dbLogs, uint64ToBytes(idx)...)
+	val, closer, err := b.conn.Get(key)
 
 	if err != nil {
 		if closer != nil {
@@ -137,7 +147,7 @@ func (b *PebbleStore) StoreLog(log *raft.Log) error {
 // StoreLogs is used to store a set of raft logs
 func (b *PebbleStore) StoreLogs(logs []*raft.Log) error {
 	for _, log := range logs {
-		key := uint64ToBytes(log.Index)
+		key := append(dbLogs, uint64ToBytes(log.Index)...)
 		val, err := encodeMsgPack(log)
 		if err != nil {
 			return err
@@ -154,16 +164,15 @@ func (b *PebbleStore) StoreLogs(logs []*raft.Log) error {
 
 // DeleteRange is used to delete logs within a given range inclusively.
 func (b *PebbleStore) DeleteRange(min, max uint64) error {
-	minKey := uint64ToBytes(min)
+	minKey := append(dbLogs, uint64ToBytes(min)...)
 	bt := b.conn.NewIndexedBatch()
-
 	iter := bt.NewIter(nil)
 
 	for iter.SeekGE(minKey); iter.Valid(); iter.Next() {
 		k := iter.Key()
 
 		// Handle out-of-range log index
-		if bytesToUint64(k) > max {
+		if bytesToUint64(bytes.TrimPrefix(k, dbLogs)) > max {
 			break
 		}
 
@@ -180,12 +189,14 @@ func (b *PebbleStore) DeleteRange(min, max uint64) error {
 
 // Set is used to set a key/value set outside of the raft log
 func (b *PebbleStore) Set(k, v []byte) error {
-	return b.conn.Set(k, v, nil)
+	key := append(dbConf, k...)
+	return b.conn.Set(key, v, nil)
 }
 
 // Get is used to retrieve a value from the k/v store by key
 func (b *PebbleStore) Get(k []byte) ([]byte, error) {
-	val, closer, err := b.conn.Get(k)
+	key := append(dbConf, k...)
+	val, closer, err := b.conn.Get(key)
 
 	if err != nil {
 		if closer != nil {

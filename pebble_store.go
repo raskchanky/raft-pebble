@@ -80,17 +80,21 @@ func (b *PebbleStore) Metrics() *pebble.Metrics {
 // FirstIndex returns the first known index from the Raft log.
 func (b *PebbleStore) FirstIndex() (uint64, error) {
 	snap := b.conn.NewSnapshot()
-	defer snap.Close()
+	defer func() { _ = snap.Close() }()
 
 	iter := snap.NewIter(&pebble.IterOptions{
 		LowerBound: dbLogs,
 	})
-	defer iter.Close()
 
 	if valid := iter.First(); valid {
 		if key := iter.Key(); key != nil {
 			return bytesToUint64(bytes.TrimPrefix(key, dbLogs)), nil
 		}
+	}
+
+	err := iter.Close()
+	if err != nil {
+		return 0, err
 	}
 
 	return 0, nil
@@ -99,17 +103,21 @@ func (b *PebbleStore) FirstIndex() (uint64, error) {
 // LastIndex returns the last known index from the Raft log.
 func (b *PebbleStore) LastIndex() (uint64, error) {
 	snap := b.conn.NewSnapshot()
-	defer snap.Close()
+	defer func() { _ = snap.Close() }()
 
 	iter := snap.NewIter(&pebble.IterOptions{
 		LowerBound: dbLogs,
 	})
-	defer iter.Close()
 
 	if valid := iter.Last(); valid {
 		if key := iter.Key(); key != nil {
 			return bytesToUint64(bytes.TrimPrefix(key, dbLogs)), nil
 		}
+	}
+
+	err := iter.Close()
+	if err != nil {
+		return 0, err
 	}
 
 	return 0, nil
@@ -118,16 +126,17 @@ func (b *PebbleStore) LastIndex() (uint64, error) {
 // GetLog is used to retrieve a log from pebble at a given index.
 func (b *PebbleStore) GetLog(idx uint64, log *raft.Log) error {
 	snap := b.conn.NewSnapshot()
-	defer snap.Close()
+	defer func() { _ = snap.Close() }()
 
 	key := append(dbLogs, uint64ToBytes(idx)...)
 	val, closer, err := snap.Get(key)
+	defer func() {
+		if closer != nil {
+			_ = closer.Close()
+		}
+	}()
 
 	if err != nil {
-		if closer != nil {
-			closer.Close()
-		}
-
 		if err == pebble.ErrNotFound {
 			return raft.ErrLogNotFound
 		} else {
@@ -138,12 +147,7 @@ func (b *PebbleStore) GetLog(idx uint64, log *raft.Log) error {
 	newVal := make([]byte, len(val))
 	copy(newVal, val)
 
-	err = decodeMsgPack(newVal, log)
-	if closer != nil {
-		closer.Close()
-	}
-
-	return err
+	return decodeMsgPack(newVal, log)
 }
 
 // StoreLog is used to store a single raft log
@@ -154,7 +158,7 @@ func (b *PebbleStore) StoreLog(log *raft.Log) error {
 // StoreLogs is used to store a set of raft logs
 func (b *PebbleStore) StoreLogs(logs []*raft.Log) error {
 	batch := b.conn.NewBatch()
-	defer batch.Close()
+	defer func() { _ = batch.Close() }()
 
 	for _, log := range logs {
 		key := append(dbLogs, uint64ToBytes(log.Index)...)
@@ -174,9 +178,10 @@ func (b *PebbleStore) StoreLogs(logs []*raft.Log) error {
 func (b *PebbleStore) DeleteRange(min, max uint64) error {
 	minKey := append(dbLogs, uint64ToBytes(min)...)
 	batch := b.conn.NewIndexedBatch()
-	defer batch.Close()
+	defer func() { _ = batch.Close() }()
 
 	iter := batch.NewIter(nil)
+	defer func() { _ = iter.Close() }()
 
 	for iter.SeekGE(minKey); iter.Valid(); iter.Next() {
 		k := iter.Key()
@@ -188,16 +193,14 @@ func (b *PebbleStore) DeleteRange(min, max uint64) error {
 
 		// Delete in-range log index
 		if err := batch.Delete(k, writeOptions); err != nil {
-			iter.Close()
 			return err
 		}
 	}
 
-	iter.Close()
 	return batch.Commit(writeOptions)
 }
 
-// Set is used to set a key/value set outside of the raft log
+// Set is used to set a key/value outside of the raft log
 func (b *PebbleStore) Set(k, v []byte) error {
 	key := append(dbConf, k...)
 	return b.conn.Set(key, v, writeOptions)
@@ -207,12 +210,13 @@ func (b *PebbleStore) Set(k, v []byte) error {
 func (b *PebbleStore) Get(k []byte) ([]byte, error) {
 	key := append(dbConf, k...)
 	val, closer, err := b.conn.Get(key)
+	defer func() {
+		if closer != nil {
+			_ = closer.Close()
+		}
+	}()
 
 	if err != nil {
-		if closer != nil {
-			closer.Close()
-		}
-
 		if err == pebble.ErrNotFound {
 			return nil, ErrKeyNotFound
 		} else {
@@ -223,11 +227,6 @@ func (b *PebbleStore) Get(k []byte) ([]byte, error) {
 	newVal := make([]byte, len(val))
 	copy(newVal, val)
 	result := append([]byte(nil), newVal...)
-
-	if closer != nil {
-		closer.Close()
-	}
-
 	return result, nil
 }
 
@@ -239,12 +238,13 @@ func (b *PebbleStore) SetUint64(key []byte, val uint64) error {
 // GetUint64 is like Get, but handles uint64 values
 func (b *PebbleStore) GetUint64(key []byte) (uint64, error) {
 	val, closer, err := b.conn.Get(key)
+	defer func() {
+		if closer != nil {
+			_ = closer.Close()
+		}
+	}()
 
 	if err != nil {
-		if closer != nil {
-			closer.Close()
-		}
-
 		if err == pebble.ErrNotFound {
 			return 0, ErrKeyNotFound
 		} else {
@@ -255,10 +255,6 @@ func (b *PebbleStore) GetUint64(key []byte) (uint64, error) {
 	newVal := make([]byte, len(val))
 	copy(newVal, val)
 	result := bytesToUint64(newVal)
-	if closer != nil {
-		closer.Close()
-	}
-
 	return result, nil
 }
 

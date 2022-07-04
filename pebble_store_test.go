@@ -57,7 +57,7 @@ func TestPebbleOptionsReadOnly(t *testing.T) {
 
 	// Create the log
 	log := &raft.Log{
-		Data: []byte("log1"),
+		Data:  []byte("log1"),
 		Index: 1,
 	}
 
@@ -66,7 +66,11 @@ func TestPebbleOptionsReadOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	store.Close()
+	err = store.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	options := Options{
 		Path: dh,
 		PebbleOptions: &pebble.Options{
@@ -196,7 +200,7 @@ func TestPebbleStore_GetLog(t *testing.T) {
 	}
 }
 
-func TestBoltStore_SetLog(t *testing.T) {
+func TestPebbleStore_SetLog(t *testing.T) {
 	store := testPebbleStore(t)
 	defer store.Close()
 	defer os.RemoveAll(store.path)
@@ -224,7 +228,7 @@ func TestBoltStore_SetLog(t *testing.T) {
 	}
 }
 
-func TestBoltStore_SetLogs(t *testing.T) {
+func TestPebbleStore_SetLogs(t *testing.T) {
 	store := testPebbleStore(t)
 	defer store.Close()
 	defer os.RemoveAll(store.path)
@@ -256,7 +260,7 @@ func TestBoltStore_SetLogs(t *testing.T) {
 	}
 }
 
-func TestBoltStore_DeleteRange(t *testing.T) {
+func TestPebbleStore_DeleteRange(t *testing.T) {
 	store := testPebbleStore(t)
 	defer store.Close()
 	defer os.RemoveAll(store.path)
@@ -286,7 +290,7 @@ func TestBoltStore_DeleteRange(t *testing.T) {
 	}
 }
 
-func TestBoltStore_Set_Get(t *testing.T) {
+func TestPebbleStore_Set_Get(t *testing.T) {
 	store := testPebbleStore(t)
 	defer store.Close()
 	defer os.RemoveAll(store.path)
@@ -313,7 +317,7 @@ func TestBoltStore_Set_Get(t *testing.T) {
 	}
 }
 
-func TestBoltStore_SetUint64_GetUint64(t *testing.T) {
+func TestPebbleStore_SetUint64_GetUint64(t *testing.T) {
 	store := testPebbleStore(t)
 	defer store.Close()
 	defer os.RemoveAll(store.path)

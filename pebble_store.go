@@ -85,16 +85,12 @@ func (b *PebbleStore) FirstIndex() (uint64, error) {
 	iter := snap.NewIter(&pebble.IterOptions{
 		LowerBound: dbLogs,
 	})
+	defer func() { _ = iter.Close() }()
 
 	if valid := iter.First(); valid {
 		if key := iter.Key(); key != nil {
 			return bytesToUint64(bytes.TrimPrefix(key, dbLogs)), nil
 		}
-	}
-
-	err := iter.Close()
-	if err != nil {
-		return 0, err
 	}
 
 	return 0, nil
@@ -108,16 +104,12 @@ func (b *PebbleStore) LastIndex() (uint64, error) {
 	iter := snap.NewIter(&pebble.IterOptions{
 		LowerBound: dbLogs,
 	})
+	defer func() { _ = iter.Close() }()
 
 	if valid := iter.Last(); valid {
 		if key := iter.Key(); key != nil {
 			return bytesToUint64(bytes.TrimPrefix(key, dbLogs)), nil
 		}
-	}
-
-	err := iter.Close()
-	if err != nil {
-		return 0, err
 	}
 
 	return 0, nil

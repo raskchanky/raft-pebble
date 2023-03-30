@@ -224,30 +224,16 @@ func (b *PebbleStore) Get(k []byte) ([]byte, error) {
 
 // SetUint64 is like Set, but handles uint64 values
 func (b *PebbleStore) SetUint64(key []byte, val uint64) error {
-	return b.conn.Set(key, uint64ToBytes(val), writeOptions)
+	return b.Set(key, uint64ToBytes(val))
 }
 
 // GetUint64 is like Get, but handles uint64 values
 func (b *PebbleStore) GetUint64(key []byte) (uint64, error) {
-	val, closer, err := b.conn.Get(key)
-	defer func() {
-		if closer != nil {
-			_ = closer.Close()
-		}
-	}()
-
+	val, err := b.Get(key)
 	if err != nil {
-		if err == pebble.ErrNotFound {
-			return 0, ErrKeyNotFound
-		} else {
-			return 0, err
-		}
+		return 0, err
 	}
-
-	newVal := make([]byte, len(val))
-	copy(newVal, val)
-	result := bytesToUint64(newVal)
-	return result, nil
+	return bytesToUint64(val), nil
 }
 
 // Sync performs an fsync on the database file handle. This is not necessary
